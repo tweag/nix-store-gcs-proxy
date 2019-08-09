@@ -1,0 +1,12 @@
+steps:
+  - label: "Build (linux/amd64)"
+    env:
+      CGO_ENABLED: 0
+      GOOS: linux
+      GOARCH: amd64
+    command: |
+      . /var/lib/buildkite-agent/.nix-profile/etc/profile.d/nix.sh
+      .buildkite/build.sh
+    timeout: 30
+    artifact_paths:
+      - "out/*"
