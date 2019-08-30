@@ -81,10 +81,12 @@ func run(addr, bucketName string) error {
 			// Write the object to GCS
 			wc := object.NewWriter(ctx)
 			if _, err := io.Copy(wc, req.Body); err != nil {
+				log.Println(err)
 				http.Error(w, err.Error(), 500)
 				return
 			}
 			if err := wc.Close(); err != nil {
+				log.Println(err)
 				http.Error(w, err.Error(), 500)
 				return
 			}
@@ -92,6 +94,7 @@ func run(addr, bucketName string) error {
 			// Apply the headers
 			_, err := object.Update(ctx, objectAttrs)
 			if err != nil {
+				log.Println(err)
 				http.Error(w, err.Error(), 500)
 			}
 
