@@ -30,7 +30,7 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	ctx := req.Context()
 	switch req.Method {
-	case "HEAD":
+	case http.MethodHead:
 		_, err := object.Attrs(ctx)
 		if err != nil {
 			if err == storage.ErrObjectNotExist {
@@ -41,7 +41,7 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			}
 			return
 		}
-	case "GET":
+	case http.MethodGet:
 		rc, err := object.NewReader(ctx)
 		if err != nil {
 			if err == storage.ErrObjectNotExist {
@@ -55,7 +55,7 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		defer rc.Close()
 
 		io.Copy(w, rc)
-	case "PUT":
+	case http.MethodPut:
 		// Copy the supported headers over from the original request
 		objectAttrs := storage.ObjectAttrsToUpdate{}
 		if val, ok := fetchHeader(req, "Content-Type"); ok {
