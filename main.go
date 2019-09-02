@@ -20,6 +20,88 @@ func fetchHeader(req *http.Request, key string) (string, bool) {
 	return "", false
 }
 
+type BucketProxy struct {
+	bucket *storage.BucketHandle
+}
+
+func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	objectPath := req.URL.Path[1:]
+	object := s.bucket.Object(objectPath)
+
+	ctx := req.Context()
+	switch req.Method {
+	case "HEAD":
+		_, err := object.Attrs(ctx)
+		if err != nil {
+			if err == storage.ErrObjectNotExist {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprintf(w, "File not found")
+			} else {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+			}
+			return
+		}
+	case "GET":
+		rc, err := object.NewReader(ctx)
+		if err != nil {
+			if err == storage.ErrObjectNotExist {
+				w.WriteHeader(http.StatusNotFound)
+				fmt.Fprintf(w, "File not found")
+			} else {
+				http.Error(w, err.Error(), http.StatusBadGateway)
+			}
+			return
+		}
+		defer rc.Close()
+
+		io.Copy(w, rc)
+	case "PUT":
+		// Copy the supported headers over from the original request
+		objectAttrs := storage.ObjectAttrsToUpdate{}
+		if val, ok := fetchHeader(req, "Content-Type"); ok {
+			objectAttrs.ContentType = val
+		}
+		if val, ok := fetchHeader(req, "Content-Language"); ok {
+			objectAttrs.ContentLanguage = val
+		}
+		if val, ok := fetchHeader(req, "Content-Encoding"); ok {
+			objectAttrs.ContentEncoding = val
+		}
+		if val, ok := fetchHeader(req, "Content-Disposition"); ok {
+			objectAttrs.ContentDisposition = val
+		}
+		if val, ok := fetchHeader(req, "Cache-Control"); ok {
+			objectAttrs.CacheControl = val
+		}
+
+		// Write the object to GCS
+		wc := object.NewWriter(ctx)
+		if _, err := io.Copy(wc, req.Body); err != nil {
+			log.Println(err)
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		if err := wc.Close(); err != nil {
+			log.Println(err)
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+
+		// Apply the headers
+		_, err := object.Update(ctx, objectAttrs)
+		if err != nil {
+			log.Println(err)
+			http.Error(w, err.Error(), http.StatusBadGateway)
+		}
+
+		fmt.Fprintf(w, "OK")
+	default:
+		msg := fmt.Sprintf("Method '%s' is not supported", req.Method)
+		http.Error(w, msg, http.StatusMethodNotAllowed)
+	}
+}
+
+// Start the HTTP server
 func run(addr, bucketName string) error {
 	ctx := context.Background()
 
@@ -30,80 +112,7 @@ func run(addr, bucketName string) error {
 
 	bucket := client.Bucket(bucketName)
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		ctx := req.Context()
-		object := bucket.Object(req.URL.Path[1:])
-		switch req.Method {
-		case "HEAD":
-			_, err := object.Attrs(req.Context())
-			if err != nil {
-				if err == storage.ErrObjectNotExist {
-					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprintf(w, "File not found")
-				} else {
-					http.Error(w, err.Error(), http.StatusBadGateway)
-				}
-				return
-			}
-		case "GET":
-			rc, err := object.NewReader(ctx)
-			if err != nil {
-				if err == storage.ErrObjectNotExist {
-					w.WriteHeader(http.StatusNotFound)
-					fmt.Fprintf(w, "File not found")
-				} else {
-					http.Error(w, err.Error(), http.StatusBadGateway)
-				}
-				return
-			}
-			defer rc.Close()
-
-			io.Copy(w, rc)
-		case "PUT":
-			// Copy the supported headers over from the original request
-			objectAttrs := storage.ObjectAttrsToUpdate{}
-			if val, ok := fetchHeader(req, "Content-Type"); ok {
-				objectAttrs.ContentType = val
-			}
-			if val, ok := fetchHeader(req, "Content-Language"); ok {
-				objectAttrs.ContentLanguage = val
-			}
-			if val, ok := fetchHeader(req, "Content-Encoding"); ok {
-				objectAttrs.ContentEncoding = val
-			}
-			if val, ok := fetchHeader(req, "Content-Disposition"); ok {
-				objectAttrs.ContentDisposition = val
-			}
-			if val, ok := fetchHeader(req, "Cache-Control"); ok {
-				objectAttrs.CacheControl = val
-			}
-
-			// Write the object to GCS
-			wc := object.NewWriter(ctx)
-			if _, err := io.Copy(wc, req.Body); err != nil {
-				log.Println(err)
-				http.Error(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-			if err := wc.Close(); err != nil {
-				log.Println(err)
-				http.Error(w, err.Error(), http.StatusBadGateway)
-				return
-			}
-
-			// Apply the headers
-			_, err := object.Update(ctx, objectAttrs)
-			if err != nil {
-				log.Println(err)
-				http.Error(w, err.Error(), http.StatusBadGateway)
-			}
-
-			fmt.Fprintf(w, "OK")
-		default:
-			msg := fmt.Sprintf("Method '%s' is not supported", req.Method)
-			http.Error(w, msg, http.StatusMethodNotAllowed)
-		}
-	})
+	handler := BucketProxy{bucket}
 
 	n := negroni.Classic() // Includes some default middlewares
 	n.UseHandler(handler)
@@ -112,6 +121,7 @@ func run(addr, bucketName string) error {
 	return http.ListenAndServe(addr, n)
 }
 
+// Urfave cli action
 func action(c *cli.Context) error {
 	addr := c.String("addr")
 	bucketName := c.String("bucket-name")
