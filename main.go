@@ -38,10 +38,10 @@ func run(addr, bucketName string) error {
 			_, err := object.Attrs(req.Context())
 			if err != nil {
 				if err == storage.ErrObjectNotExist {
-					w.WriteHeader(404)
+					w.WriteHeader(http.StatusNotFound)
 					fmt.Fprintf(w, "File not found")
 				} else {
-					http.Error(w, err.Error(), 500)
+					http.Error(w, err.Error(), http.StatusBadGateway)
 				}
 				return
 			}
@@ -49,10 +49,10 @@ func run(addr, bucketName string) error {
 			rc, err := object.NewReader(ctx)
 			if err != nil {
 				if err == storage.ErrObjectNotExist {
-					w.WriteHeader(404)
+					w.WriteHeader(http.StatusNotFound)
 					fmt.Fprintf(w, "File not found")
 				} else {
-					http.Error(w, err.Error(), 500)
+					http.Error(w, err.Error(), http.StatusBadGateway)
 				}
 				return
 			}
@@ -82,12 +82,12 @@ func run(addr, bucketName string) error {
 			wc := object.NewWriter(ctx)
 			if _, err := io.Copy(wc, req.Body); err != nil {
 				log.Println(err)
-				http.Error(w, err.Error(), 500)
+				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
 			}
 			if err := wc.Close(); err != nil {
 				log.Println(err)
-				http.Error(w, err.Error(), 500)
+				http.Error(w, err.Error(), http.StatusBadGateway)
 				return
 			}
 
@@ -95,12 +95,13 @@ func run(addr, bucketName string) error {
 			_, err := object.Update(ctx, objectAttrs)
 			if err != nil {
 				log.Println(err)
-				http.Error(w, err.Error(), 500)
+				http.Error(w, err.Error(), http.StatusBadGateway)
 			}
 
 			fmt.Fprintf(w, "OK")
 		default:
-			w.WriteHeader(500)
+			msg := fmt.Sprintf("Method '%s' is not supported", req.Method)
+			http.Error(w, msg, http.StatusMethodNotAllowed)
 		}
 	})
 
