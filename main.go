@@ -11,6 +11,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/urfave/cli"
 	"github.com/urfave/negroni"
+	"google.golang.org/api/option"
 )
 
 func fetchHeader(req *http.Request, key string) (string, bool) {
@@ -105,7 +106,7 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func run(addr, bucketName string) error {
 	ctx := context.Background()
 
-	client, err := storage.NewClient(ctx)
+	client, err := storage.NewClient(ctx, option.WithScopes(storage.ScopeReadWrite))
 	if err != nil {
 		return err
 	}
