@@ -56,26 +56,26 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 		io.Copy(w, rc)
 	case http.MethodPut:
-		// Copy the supported headers over from the original request
-		objectAttrs := storage.ObjectAttrsToUpdate{}
-		if val, ok := fetchHeader(req, "Content-Type"); ok {
-			objectAttrs.ContentType = val
-		}
-		if val, ok := fetchHeader(req, "Content-Language"); ok {
-			objectAttrs.ContentLanguage = val
-		}
-		if val, ok := fetchHeader(req, "Content-Encoding"); ok {
-			objectAttrs.ContentEncoding = val
-		}
-		if val, ok := fetchHeader(req, "Content-Disposition"); ok {
-			objectAttrs.ContentDisposition = val
-		}
-		if val, ok := fetchHeader(req, "Cache-Control"); ok {
-			objectAttrs.CacheControl = val
-		}
-
 		// Write the object to GCS
 		wc := object.NewWriter(ctx)
+
+		// Copy the supported headers over from the original request
+		if val, ok := fetchHeader(req, "Content-Type"); ok {
+			wc.ContentType = val
+		}
+		if val, ok := fetchHeader(req, "Content-Language"); ok {
+			wc.ContentLanguage = val
+		}
+		if val, ok := fetchHeader(req, "Content-Encoding"); ok {
+			wc.ContentEncoding = val
+		}
+		if val, ok := fetchHeader(req, "Content-Disposition"); ok {
+			wc.ContentDisposition = val
+		}
+		if val, ok := fetchHeader(req, "Cache-Control"); ok {
+			wc.CacheControl = val
+		}
+
 		if _, err := io.Copy(wc, req.Body); err != nil {
 			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadGateway)
@@ -85,13 +85,6 @@ func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			log.Println(err)
 			http.Error(w, err.Error(), http.StatusBadGateway)
 			return
-		}
-
-		// Apply the headers
-		_, err := object.Update(ctx, objectAttrs)
-		if err != nil {
-			log.Println(err)
-			http.Error(w, err.Error(), http.StatusBadGateway)
 		}
 
 		fmt.Fprintf(w, "OK")
