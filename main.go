@@ -43,6 +43,10 @@ func (s bucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 	case http.MethodGet:
+		if req.URL.Path == "/_health" {
+			w.Write([]byte("OK"))
+			return
+		}
 		rc, err := object.NewReader(ctx)
 		if err != nil {
 			if err == storage.ErrObjectNotExist {
