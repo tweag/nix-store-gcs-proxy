@@ -21,11 +21,11 @@ func fetchHeader(req *http.Request, key string) (string, bool) {
 	return "", false
 }
 
-type BucketProxy struct {
+type bucketProxy struct {
 	bucket *storage.BucketHandle
 }
 
-func (s BucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (s bucketProxy) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	objectPath := req.URL.Path[1:]
 	object := s.bucket.Object(objectPath)
 
@@ -106,7 +106,7 @@ func run(addr, bucketName string) error {
 
 	bucket := client.Bucket(bucketName)
 
-	handler := BucketProxy{bucket}
+	handler := bucketProxy{bucket}
 
 	n := negroni.Classic() // Includes some default middlewares
 	n.UseHandler(handler)
